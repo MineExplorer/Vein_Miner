@@ -1,77 +1,85 @@
-var ores = [14, 15, 16, 21, 73, 74, 56, 129, 153];
-var sneakMode = false;
-var destroyParticles = false;
+let sneakMode = __config__.getBool("sneak_mode");
+let destroyParticles = __config__.getBool("destroy_particles");
 
-Callback.addCallback("PreLoaded", function(){
-	for(var id in BlockID){
-		if(id[0]=='o' && id[1]=='r' && id[2]=='e' && !TileEntity.isTileEntityBlock(Block[id])){
+const ores = [14, 15, 16, 21, 73, 74, 56, 129, 153];
+ModAPI.registerAPI("VeinMinerBlocks", ores);
+
+Callback.addCallback("PreLoaded", function() {
+	for (let id in BlockID) {
+		if (id.startsWith("ore") && !TileEntity.isTileEntityBlock(Block[id])) {
 			ores.push(BlockID[id]);
 		}
 	}
-	ModAPI.registerAPI("VeinMinerBlocks", ores);
 });
 
-Callback.addCallback("LevelLoaded", function(){
-	sneakMode = __config__.getBool("sneak_mode");
-	destroyParticles = __config__.getBool("destroy_particles");
-})
+Callback.addCallback("DestroyBlock", function(coords, block, player) {
+	if (Entity.getSneaking(player) != sneakMode) return;
 
-Callback.addCallback("DestroyBlock", function(coords, block, player){
-	if(Entity.getSneaking(Player.get()) == sneakMode){
-		var item = Player.getCarriedItem();
-		var toolData = ToolAPI.getToolData(item.id);
-		var toolLevel = ToolAPI.getToolLevelViaBlock(item.id, block.id);
-		if(ores.indexOf(block.id) != -1 && toolLevel > 0){
-			var enchant = ToolAPI.getEnchantExtraData(item.extra);
-			if (toolData.modifyEnchant) {
-	            toolData.modifyEnchant(enchant, item);
-	        }
-			reqursiveDestroyFor6Sides(coords.x, coords.y, coords.z, item, block, toolLevel, enchant);
-			Player.setCarriedItem(item.id, item.count, item.data, item.extra);
+	const item = Entity.getCarriedItem(player);
+	const toolLevel = ToolAPI.getToolLevelViaBlock(item.id, block.id);
+	if (ores.indexOf(block.id) != -1 && toolLevel > 0) {
+		const region = BlockSource.getDefaultForActor(player);
+		const toolData = ToolAPI.getToolData(item.id);
+		const enchant = ToolAPI.getEnchantExtraData(item.extra);
+		if (toolData.modifyEnchant) {
+			toolData.modifyEnchant(enchant, item);
 		}
+		reqursiveDestroyFor6Sides(region, coords.x, coords.y, coords.z, player, item, block, enchant);
+		Entity.setCarriedItem(player, item.id, item.count, item.data, item.extra);
 	}
 });
 
-function reqursiveDestroyOre(x, y, z, item, block, level, enchant){
-	var blockID = World.getBlockID(x, y, z);
-	var toolData = ToolAPI.getToolData(item.id);
-	if (toolData && item.data < toolData.toolMaterial.durability && (block.id == blockID || block.id==73 && blockID==74 || block.id==74 && blockID==73)) {
-		var coords = {x: x, y: y, z: z};
-		if (!(toolData.onDestroy && toolData.onDestroy(item, coords, block)) && Math.random() < 1 / (enchant.unbreaking + 1)) {
-			item.data++;
-			if (toolData.isWeapon) {
-				item.data++;
-			}
+function reqursiveDestroyFor6Sides(region, x, y, z, player, item, block, enchant) {
+	reqursiveDestroyOre(region, x+1, y, z, player, item, block, enchant);
+	reqursiveDestroyOre(region, x-1, y, z, player, item, block, enchant);
+	reqursiveDestroyOre(region, x, y+1, z, player, item, block, enchant);
+	reqursiveDestroyOre(region, x, y-1, z, player, item, block, enchant);
+	reqursiveDestroyOre(region, x, y, z+1, player, item, block, enchant);
+	reqursiveDestroyOre(region, x, y, z-1, player, item, block, enchant);
+}
+
+function reqursiveDestroyOre(region, x, y, z, player, item, block, enchant) {
+	const blockID = region.getBlockId(x, y, z);
+	const toolData = ToolAPI.getToolData(item.id);
+	if (toolData && item.data < toolData.toolMaterial.durability && (block.id == blockID || block.id == 73 && blockID == 74 || block.id == 74 && blockID == 73)) {
+		const coords = {x: x, y: y, z: z};
+		if (!(toolData.onDestroy && toolData.onDestroy(item, coords, block, player)) && Math.random() < 1 / (enchant.unbreaking + 1)) {
+			item.data += toolData.isWeapon ? 2 : 1;
         }
         if (item.data >= toolData.toolMaterial.durability) {
-            if (!(toolData.onBroke && toolData.onBroke(item, coords, block))) {
+            if (!(toolData.onBroke && toolData.onBroke(item))) {
                 item.id = toolData.brokenId;
                 item.count = 1;
                 item.data = 0;
             }
         }
 
-		if (destroyParticles) {
-			World.destroyBlock(x, y, z, true);
-		} else {
-			var dropFunc = Block.dropFunctions[block.id];
-			if (dropFunc) {
-				var drop = dropFunc(coords, block.id, block.data, level, enchant);
-				for (var i in drop) {
-					World.drop(x, y, z, drop[i][0], drop[i][1], drop[i][2]);
-				}
-			}
-			World.setBlock(x, y, z, 0);
-		}
-		reqursiveDestroyFor6Sides(x, y, z, item, block, level, enchant);
+		destroyBlock(region, coords, player, item, block, enchant);
+		reqursiveDestroyFor6Sides(region, x, y, z, player, item, block, enchant);
 	}
 }
 
-function reqursiveDestroyFor6Sides(x, y, z, item, block, level, enchant){
-	reqursiveDestroyOre(x+1, y, z, item, block, level, enchant);
-	reqursiveDestroyOre(x-1, y, z, item, block, level, enchant);
-	reqursiveDestroyOre(x, y+1, z, item, block, level, enchant);
-	reqursiveDestroyOre(x, y-1, z, item, block, level, enchant);
-	reqursiveDestroyOre(x, y, z+1, item, block, level, enchant);
-	reqursiveDestroyOre(x, y, z-1, item, block, level, enchant);
+function destroyBlock(region, coords, player, item, block, enchant) {
+	if (getMCPEVersion().main - 17 > 11) {
+		if (destroyParticles) {
+			region.breakBlock(coords.x, coords.y, coords.z, true, player, item);
+		} else {
+			Block.onBlockDestroyed(coords, block, false, true, region, player, item);
+			region.setBlock(coords.x, coords.y, coords.z, 0, 0);
+		}
+	} else {
+		const dropFunc = Block.dropFunctions[block.id];
+		if (dropFunc) {
+			const toolLevel = ToolAPI.getToolLevel(item.id);
+			const drop = dropFunc(coords, block.id, block.data, toolLevel, enchant);
+			for (let i in drop) {
+				region.spawnDroppedItem(coords.x, coords.y, coords.z, drop[i][0], drop[i][1], drop[i][2], drop[i][3] || null);
+			}
+		}
+		if (destroyParticles) {
+			region.destroyBlock(coords.x, coords.y, coords.z, false);
+		} else {
+			region.setBlock(coords.x, coords.y, coords.z, 0, 0);
+		}
+	}
 }

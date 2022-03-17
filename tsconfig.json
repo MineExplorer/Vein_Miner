@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES5",
+    "lib": ["ESNext"],
+    "outFile": "main.js",
+    "allowJs": true,
+    "downlevelIteration": true
+  },
+  "exclude": [],
+  "include": [
+    "Vein miner/main.js",
+  ],
+  "files": [
+    "../declarations/core-engine.d.ts"
+  ]
+}
+
