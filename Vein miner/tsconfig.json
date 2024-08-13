@@ -8,10 +8,9 @@
   },
   "exclude": [],
   "include": [
-    "Vein miner/main.js",
+    "src/main.ts",
   ],
   "files": [
-    "../declarations/core-engine.d.ts"
+    "../../my-innercore-docs/headers/core-engine.d.ts"
   ]
 }
-
